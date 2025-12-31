@@ -26,23 +26,6 @@ app.use((req, res, next) => {
   next();
 });
 
-const LOG_PATH = '/home/rwkbuchx/logs/passenger.log';
-
-// Simple log function
-const log = (message) => {
-  const timestamp = new Date().toISOString();
-  fs.appendFileSync(LOG_PATH, `[${timestamp}] ${message}\n`);
-};
-
-// Log every incoming request
-app.use((req, res, next) => {
-  log(`Request: ${req.method} ${req.originalUrl} - Body: ${JSON.stringify(req.body)}`);
-  next();
-});
-app.use((err, req, res, next) => {
-  log(`Error: ${err.message}\nStack: ${err.stack}`);
-  res.status(500).json({ error: 'Internal Server Error' });
-});
 
 /* =======================
    File Upload Configuration
