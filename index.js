@@ -6,10 +6,21 @@ import nodemailer from "nodemailer";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import multer from "multer";
-import path from "path";
 import fs from "fs";
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+// ES module fix: define __filename and __dirname first
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Now you can safely use __dirname
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const app = express();
 app.use(cors());
@@ -25,15 +36,6 @@ app.use((req, res, next) => {
   console.log('📋 Content-Type:', req.headers['content-type']);
   next();
 });
-
-
-/* =======================
-   File Upload Configuration
-======================= */
-const uploadDir = 'uploads/';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -1027,20 +1029,22 @@ app.put("/api/projects/:id", upload.single('image'), async (req, res) => {
       
       // Delete old image if exists
       if (project.projectImage && project.projectImage.filename) {
-        const oldImagePath = path.join(__dirname, '..', 'uploads', project.projectImage.filename);
+        const oldImagePath = path.join(uploadDir, project.projectImage.filename);
         fs.unlink(oldImagePath, (err) => {
           if (err) console.error("❌ Error deleting old image:", err);
         });
       }
       
+      const fileUrl = `${process.env.BACKEND_URL || 'https://achrik-backend-2.onrender.com'}/uploads/${req.file.filename}`;
+      
       project.projectImage = {
         filename: req.file.filename,
         originalname: req.file.originalname,
-        path: req.file.path,
         size: req.file.size,
         mimetype: req.file.mimetype,
-        url: `/uploads/${req.file.filename}`
+        url: fileUrl
       };
+      
     }
     
     // Parse FormData fields if they exist
@@ -1156,20 +1160,22 @@ app.put("/api/projects/:id/update-details", upload.single('image'), async (req, 
       
       // Delete old image if exists
       if (project.projectImage && project.projectImage.filename) {
-        const oldImagePath = path.join(__dirname, '..', 'uploads', project.projectImage.filename);
+        const oldImagePath = path.join(uploadDir, project.projectImage.filename);
         fs.unlink(oldImagePath, (err) => {
           if (err) console.error("❌ Error deleting old image:", err);
         });
       }
       
+      const fileUrl = `${process.env.BACKEND_URL || 'https://achrik-backend-2.onrender.com'}/uploads/${req.file.filename}`;
+      
       project.projectImage = {
         filename: req.file.filename,
         originalname: req.file.originalname,
-        path: req.file.path,
         size: req.file.size,
         mimetype: req.file.mimetype,
-        url: `/uploads/${req.file.filename}`
+        url: fileUrl
       };
+      
     }
     
     // Update fields from parsed data
@@ -1603,20 +1609,22 @@ app.put("/api/projects/:id/image", verifyToken, upload.single('projectImage'), a
     }
     
     if (project.projectImage && project.projectImage.filename) {
-      const oldImagePath = path.join(__dirname, '..', 'uploads', project.projectImage.filename);
+      const oldImagePath = path.join(uploadDir, project.projectImage.filename);
       fs.unlink(oldImagePath, (err) => {
         if (err) console.error("Error deleting old image:", err);
       });
     }
     
+    const fileUrl = `${process.env.BACKEND_URL || 'https://achrik-backend-2.onrender.com'}/uploads/${req.file.filename}`;
+    
     project.projectImage = {
       filename: req.file.filename,
       originalname: req.file.originalname,
-      path: req.file.path,
       size: req.file.size,
       mimetype: req.file.mimetype,
-      url: `/uploads/${req.file.filename}`
+      url: fileUrl
     };
+    
     
     await project.save({ validateBeforeSave: false });
     
@@ -1972,21 +1980,22 @@ app.put("/api/banners/:id", upload.single('image'), async (req, res) => {
     // Handle new image upload if provided
     if (req.file) {
       console.log("🖼️ New image uploaded, deleting old image");
-      
+    
       // Delete old image file
       if (banner.filename) {
-        const oldImagePath = path.join(__dirname, '..', 'uploads', banner.filename);
+        const oldImagePath = path.join(uploadDir, banner.filename);
         fs.unlink(oldImagePath, (err) => {
           if (err) console.error("Error deleting old image:", err);
         });
       }
-      
+    
       // Update with new image
-      banner.imageUrl = `/uploads/${req.file.filename}`;
+      banner.imageUrl = `${process.env.BACKEND_URL || 'https://achrik-backend-2.onrender.com'}/uploads/${req.file.filename}`;
       banner.filename = req.file.filename;
       banner.originalname = req.file.originalname;
       banner.path = req.file.path;
     }
+    
 
     // Update other fields
     if (req.body.title) banner.title = req.body.title;
@@ -2046,11 +2055,12 @@ app.delete("/api/banners/:id", async (req, res) => {
 
     // Delete image file
     if (banner.filename) {
-      const imagePath = path.join(__dirname, '..', 'uploads', banner.filename);
+      const imagePath = path.join(uploadDir, banner.filename);
       fs.unlink(imagePath, (err) => {
         if (err) console.error("Error deleting banner image:", err);
       });
     }
+    
 
     await banner.deleteOne();
 
@@ -2208,9 +2218,8 @@ const adsWithFixedUrls = ads.map(ad => {
     return adObj;
   }
   
-  // If it's a relative path (starts with /uploads), add base URL
   if (adObj.imageUrl && adObj.imageUrl.startsWith('/uploads')) {
-    const fullUrl = `${req.protocol}://${req.get('host')}${adObj.imageUrl}`;
+    const fullUrl = `${process.env.BACKEND_URL || 'https://achrik-backend-2.onrender.com'}${adObj.imageUrl}`;
     console.log(`Ad ${adObj._id} converting relative to full URL: ${fullUrl}`);
     return {
       ...adObj,
@@ -2324,9 +2333,8 @@ app.put("/api/ads/:id", upload.single('image'), async (req, res) => {
     if (req.file) {
       console.log("🖼️ New image uploaded, deleting old image");
       
-      // Delete old image file
       if (ad.filename) {
-        const oldImagePath = path.join(process.cwd(), 'uploads', ad.filename);
+        const oldImagePath = path.join(uploadDir, ad.filename);
         fs.unlink(oldImagePath, (err) => {
           if (err) console.error("Error deleting old image:", err);
         });
@@ -2398,13 +2406,14 @@ app.delete("/api/ads/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "الإعلان غير موجود" });
     }
 
-    // Delete image file
-    if (ad.filename) {
-      const imagePath = path.join(process.cwd(), 'uploads', ad.filename);
-      fs.unlink(imagePath, (err) => {
-        if (err) console.error("Error deleting ad image:", err);
-      });
-    }
+   // Delete image file
+if (ad.filename) {
+  const imagePath = path.join(uploadDir, ad.filename);
+  fs.unlink(imagePath, (err) => {
+    if (err) console.error("Error deleting ad image:", err);
+  });
+}
+
 
     await ad.deleteOne();
 
