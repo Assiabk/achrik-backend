@@ -667,7 +667,6 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(500).json({ success: false, message: "حدث خطأ أثناء التسجيل" });
   }
 });
-
 app.get("/api/auth/verify/:token", async (req, res) => {
   try {
     const user = await User.findOne({ verificationToken: req.params.token });
@@ -677,19 +676,21 @@ app.get("/api/auth/verify/:token", async (req, res) => {
     user.verificationToken = undefined;
     await user.save();
 
+    const frontendLoginURL = "https://achrikmaana.com/login";
+
     res.send(`
       <html>
         <head>
           <title>تم التأكيد</title>
           <script>
-            setTimeout(() => { window.location.href = "http://localhost:3000/login"; }, 3000);
+            setTimeout(() => { window.location.href = "${frontendLoginURL}"; }, 3000);
           </script>
         </head>
         <body style="font-family: Arial; text-align:center; margin-top:50px;">
           <h2>تم تأكيد حسابك بنجاح!</h2>
           <p>يمكنك الآن تسجيل الدخول باستخدام حسابك.</p>
           <p>سيتم تحويلك تلقائيًا إلى صفحة تسجيل الدخول خلال 3 ثوانٍ...</p>
-          <a href="http://localhost:3000/login">إذا لم يتم التحويل، اضغط هنا</a>
+          <a href="${frontendLoginURL}">إذا لم يتم التحويل، اضغط هنا</a>
         </body>
       </html>
     `);
