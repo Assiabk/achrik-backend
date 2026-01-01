@@ -1004,94 +1004,74 @@ app.get("/api/projects/:id", async (req, res) => {
   }
 });
 
-// ✅ FIXED: UPDATE project - بدون مصادقة (للجميع) - WITH IMAGE UPLOAD
+// ✅ UPDATE project - بدون مصادقة (للجميع) - WITH IMAGE UPLOAD
 app.put("/api/projects/:id", upload.single('image'), async (req, res) => {
   try {
-    console.log(`📝 Updating project with image: ${req.params.id}`);
+    console.log(`📝 Updating project: ${req.params.id}`);
     console.log("📦 Request body fields:", Object.keys(req.body));
     console.log("🖼️ Request file:", req.file ? `Present: ${req.file.filename}` : "None");
-    
+
     const project = await Project.findById(req.params.id);
-    
     if (!project) {
       // Delete uploaded file if project not found
-      if (req.file) {
-        fs.unlink(req.file.path, (err) => {
-          if (err) console.error("Error deleting uploaded file:", err);
-        });
-      }
+      if (req.file) fs.unlink(req.file.path, (err) => err && console.error("Error deleting uploaded file:", err));
       return res.status(404).json({ success: false, message: "Project not found" });
     }
-    
-    // Handle image upload if provided
+
+    // Helper to get full URL for uploaded files
+    const getFullUrl = (filePath) => {
+      if (!filePath) return null;
+      if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath;
+      return `${process.env.BACKEND_URL || 'https://achrik-backend-2.onrender.com'}${filePath}`;
+    };
+
+    // Handle image upload
     if (req.file) {
       console.log("🖼️ Processing image upload:", req.file.filename);
-      
-      // Delete old image if exists
+
+      // Delete old image
       if (project.projectImage && project.projectImage.filename) {
         const oldImagePath = path.join(uploadDir, project.projectImage.filename);
-        fs.unlink(oldImagePath, (err) => {
-          if (err) console.error("❌ Error deleting old image:", err);
-        });
+        fs.unlink(oldImagePath, (err) => err && console.error("❌ Error deleting old image:", err));
       }
-      
-      const fileUrl = `${process.env.BACKEND_URL || 'https://achrik-backend-2.onrender.com'}/uploads/${req.file.filename}`;
-      
+
       project.projectImage = {
         filename: req.file.filename,
         originalname: req.file.originalname,
         size: req.file.size,
         mimetype: req.file.mimetype,
-        url: fileUrl
+        url: getFullUrl(`/uploads/${req.file.filename}`)
       };
-      
     }
-    
-    // Parse FormData fields if they exist
-    let updateData = {};
-    if (req.body) {
-      // Try to parse JSON fields from FormData
-      try {
-        if (req.body.capitalRaised !== undefined) updateData.capitalRaised = parseFloat(req.body.capitalRaised) || 0;
-        if (req.body.capitalPercentage !== undefined) updateData.capitalPercentage = parseFloat(req.body.capitalPercentage) || 0;
-        if (req.body.daysRemaining !== undefined) updateData.daysRemaining = parseInt(req.body.daysRemaining) || 30;
-        if (req.body.totalVotes !== undefined) updateData.totalVotes = parseInt(req.body.totalVotes) || 0;
-        if (req.body.projectDetails !== undefined) updateData.projectDetails = req.body.projectDetails;
-      } catch (e) {
-        console.log("⚠️ Could not parse some fields:", e.message);
-      }
-    }
-    
-    // Update fields from parsed data
+
+    // Parse FormData fields
     const updatableFields = [
-      'capitalRaised', 'capitalPercentage', 'daysRemaining', 
+      'capitalRaised', 'capitalPercentage', 'daysRemaining',
       'totalVotes', 'projectDetails', 'capitalRequired'
     ];
-    
+
     updatableFields.forEach(field => {
-      if (updateData[field] !== undefined) {
-        project[field] = updateData[field];
+      if (req.body[field] !== undefined) {
+        project[field] = field.includes('Percentage') || field.includes('Raised') || field.includes('Votes') || field.includes('Remaining')
+          ? Number(req.body[field]) || 0
+          : req.body[field];
       }
     });
-    
-    // ✅ Manually calculate percentages
+
+    // Manually calculate funding percentages
     const capitalRequired = Number(project.capitalRequired) || 0;
     const capitalRaised = Number(project.capitalRaised) || 0;
-    
-    if (capitalRequired > 0) {
-      project.fundingPercentage = Math.min(Math.round((capitalRaised / capitalRequired) * 100), 100);
-    } else {
-      project.fundingPercentage = 0;
-    }
-    
-    if ((project.capitalPercentage === 0 || !project.capitalPercentage) && capitalRequired > 0) {
+
+    project.fundingPercentage = capitalRequired > 0 ? Math.min(Math.round((capitalRaised / capitalRequired) * 100), 100) : 0;
+
+    if ((!project.capitalPercentage || project.capitalPercentage === 0) && capitalRequired > 0) {
       project.capitalPercentage = Math.min(Math.round((capitalRaised / capitalRequired) * 100), 100);
     }
-    
-    // Save without triggering validation
+
+    // Save without validation
     await project.save({ validateBeforeSave: false });
-    
-    console.log("✅ Project updated successfully:", {
+
+    console.log("✅ Project updated:", {
       id: project._id,
       projectName: project.projectName,
       capitalRaised: project.capitalRaised,
@@ -1099,29 +1079,27 @@ app.put("/api/projects/:id", upload.single('image'), async (req, res) => {
       hasImage: !!project.projectImage,
       imageUrl: project.projectImage?.url
     });
-    
-    res.json({ 
-      success: true, 
-      message: "تم تحديث المشروع بنجاح", 
-      project 
+
+    // Return project as plain object to avoid Mongoose subdocument quirks
+    res.json({
+      success: true,
+      message: "تم تحديث المشروع بنجاح",
+      project: project.toObject()
     });
-    
+
   } catch (err) {
     console.error("❌ Error updating project:", err);
-    
+
     // Delete uploaded file if there was an error
-    if (req.file) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error("Error deleting uploaded file:", err);
-      });
-    }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: err.message || "حدث خطأ أثناء تحديث المشروع" 
+    if (req.file) fs.unlink(req.file.path, (err) => err && console.error("Error deleting uploaded file:", err));
+
+    res.status(500).json({
+      success: false,
+      message: err.message || "حدث خطأ أثناء تحديث المشروع"
     });
   }
 });
+
 
 // ✅ FIXED: UPDATE project details - بدون مصادقة - WITH IMAGE UPLOAD
 app.put("/api/projects/:id/update-details", upload.single('image'), async (req, res) => {
